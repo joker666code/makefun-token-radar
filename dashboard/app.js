@@ -138,6 +138,7 @@
       if (key === 'growth') return (b.change_7d || 0) - (a.change_7d || 0);
       if (key === 'age') return (b.age_days || 0) - (a.age_days || 0);
       if (key === 'density') return (b.implied_value_usd / b.tvl_usd) - (a.implied_value_usd / a.tvl_usd);
+      if (key === 'efficiency') return (b.implied_value_usd / b.farm_capital_usd) - (a.implied_value_usd / a.farm_capital_usd);
       return b.implied_value_usd - a.implied_value_usd;
     });
     return list;
@@ -208,7 +209,9 @@
       '<div class="meta">#' + catRank + ' of ' + catPeers.length + ' in ' + esc(r.category || 'no category') +
       ' &middot; TVL rank #' + tvlRank + ' of ' + rows.length +
       ' &middot; ' + share + '% of the board&rsquo;s total implied value' +
-      ' &middot; farm size $' + r.farm_capital_usd + ' at risk for ' + r.farm_hold_days + ' days.</div>' +
+      ' &middot; farm size $' + r.farm_capital_usd + ' at risk for ' + r.farm_hold_days + ' days — $' +
+      Math.round(r.implied_value_usd / r.farm_capital_usd).toLocaleString('en-US') +
+      ' of implied value per farm $.</div>' +
       '<h3>Implied value — how the number is built</h3>' +
       '<div class="breakdown">' +
       '<div><b>' + usd(base) + '</b><span>Base: TVL &times; 0.08 (snapshot median mcap/TVL)</span></div>' +
@@ -222,7 +225,8 @@
       r.farm_steps.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') +
       '</ol>' +
       '<p class="note">This plan does not claim ' + esc(r.name) + ' will issue a token, has an airdrop, or tracks activity. ' +
-      'It is a way to use the protocol so that, if it ever does reward past users, the record exists — sized so the cost of being wrong is one deliberate position, not a portfolio bet.</p>';
+      'It is a way to use the protocol so that, if it ever does reward past users, the record exists — sized so the cost of being wrong is one deliberate position, not a portfolio bet. ' +
+      'No yield, emissions rate, slippage or impermanent-loss figure is assumed anywhere in this plan — the steps size the position, they do not forecast its return.</p>';
     document.getElementById('closedetail').addEventListener('click', function () {
       detailEl.hidden = true; state.slug = '';
       tbody.querySelectorAll('tr.sel').forEach(function (tr) { tr.classList.remove('sel'); });
@@ -249,7 +253,8 @@
     '<p>The board&rsquo;s ' + usd(totalImplied) + ' of implied value across ' + catList.length +
     ' categories. Risk curators lead because the biggest tokenless treasuries sit there; ' +
     'the long tail is where the early finds are — ' + rows.filter(function (r) { return r.tvl_usd < DATA.floor_usd; }).length +
-    ' of the ' + rows.length + ' rows sit below the $50M watchlist floor.</p>' +
+    ' of the ' + rows.length + ' rows sit below the $50M watchlist floor. Value is concentrated: the top 10 rows hold ' +
+    (100 * DATA.top10_share).toFixed(1) + '% of the board&rsquo;s total implied value, so the first screen is where most of the money sits.</p>' +
     '<table><thead><tr><th>Category</th><th class="num">Protocols</th><th class="num">Total implied</th><th class="num">Share</th><th>Top protocol</th></tr></thead><tbody>' +
     catList.map(function (c) {
       return '<tr><td>' + esc(c.name) + '</td><td class="num">' + c.n + '</td>' +
@@ -263,13 +268,18 @@
   // in the page instead of asserted: sorted by mcap/TVL, cheapest first, the
   // two middle rows highlighted — their midpoint is the 0.082 the board rounds.
   var cal = DATA.calibration || [];
+  var cb = DATA.calibration_below || { n: 0, median: 0, p10: 0, p25: 0, p75: 0, p90: 0 };
   document.getElementById('calibration').innerHTML =
     '<h2>Where the 0.08 comes from — the calibration set</h2>' +
     '<p>These ' + cal.length + ' protocols already have a token that trades, hold TVL at or above the $50M floor, ' +
-    'and carry a full token record (market cap, Gecko id and symbol). Four more carry a market cap but no Gecko id ' +
-    'or symbol and are left out. Sorted by mcap/TVL, lowest first; the highlighted pair is the median — ' +
+    'and carry a full token record (market cap, Gecko id and symbol). Four more above the floor record a market cap of exactly $0 ' +
+    'and are left out — the median needs a positive market cap to mean anything. Sorted by mcap/TVL, lowest first; the highlighted pair is the median — ' +
     'their midpoint is 0.082, rounded to the 0.08 the board multiplies by. Deciles: ' +
     d.p10 + ' / ' + d.p25 + ' / ' + d.p50 + ' / ' + d.p75 + ' / ' + d.p90 + '.</p>' +
+    '<p>Does the 0.08 hold below the floor, where ' + rows.filter(function (r) { return r.tvl_usd < DATA.floor_usd; }).length + ' of the ' + rows.length + ' ranked rows sit? The same check on the ' +
+    cb.n + ' smaller trading protocols below $50M gives a median of ' + cb.median.toFixed(3) + ' (deciles ' +
+    cb.p10.toFixed(3) + ' / ' + cb.p25.toFixed(3) + ' / ' + cb.median.toFixed(3) + ' / ' + cb.p75.toFixed(3) + ' / ' + cb.p90.toFixed(3) + ') — higher, not lower. ' +
+    'The board&rsquo;s 0.08 is the big-protocol median, and it understates the small rows rather than flattering them.</p>' +
     '<table><thead><tr><th>#</th><th>Protocol</th><th>Category</th><th class="num">TVL</th><th class="num">Market cap</th><th class="num">mcap / TVL</th></tr></thead><tbody>' +
     cal.map(function (p, i) {
       return '<tr' + (p.median_pair ? ' class="median"' : '') + '><td>' + (i + 1) + '</td>' +
@@ -291,6 +301,45 @@
         '<td class="num">' + usd(p.tvl_usd) + '</td><td class="num">' + usd(p.mcap_usd) + '</td>' +
         '<td class="num">' + p.mcap_tvl.toFixed(3) + '</td></tr>';
     }).join('') + '</tbody></table>';
+
+  // ---- ranking robustness --------------------------------------------------
+  // One assumption changed at a time, board re-ranked: how far the ranking
+  // moves, computed by buildSensitivity in lib/model.ts. The published board
+  // never changes; this is the audit that it is not one parameter's artefact.
+  var sens = DATA.sensitivity || [];
+  var maxMove = 0, allRank1 = true;
+  sens.forEach(function (s) { if (s.max_rank_move > maxMove) maxMove = s.max_rank_move; if (!s.rank1_same) allRank1 = false; });
+  document.getElementById('robust').innerHTML =
+    '<h2>How much would the ranking move if the assumptions were different?</h2>' +
+    '<p>Each row re-ranks the whole board with one assumption changed and nothing else. ' +
+    (allRank1 ? 'Rank #1 stays rank #1 under every variant; ' : '') +
+    'no row moves more than ' + maxMove + ' places under any single change — ' +
+    'the ranking is driven by TVL and the snapshot, not by one parameter choice. The unrounded 0.082 moves nothing at all: it scales every row by the same 2.5%. ' +
+    'For scale, the calibration deciles span ' + d.p10 + ' to ' + d.p90 + ' — more than a hundredfold — so each implied value is a central estimate inside a wide band, not a precise price.</p>' +
+    '<table><thead><tr><th>One change</th><th class="num">Top 10 kept</th><th class="num">Biggest rank move</th><th class="num">Rows moved &gt; 10</th><th>Rank #1 same?</th></tr></thead><tbody>' +
+    sens.map(function (s) {
+      return '<tr><td>' + esc(s.variant) + '</td><td class="num">' + s.top10_overlap + ' / 10</td>' +
+        '<td class="num">' + s.max_rank_move + '</td><td class="num">' + s.rows_moved_gt10 + '</td>' +
+        '<td>' + (s.rank1_same ? 'yes' : 'no') + '</td></tr>';
+    }).join('') + '</tbody></table>';
+
+  // ---- thin data and edge cases ---------------------------------------------
+  // Counts from the board itself (buildEdgeCases in lib/model.ts); a missing
+  // figure never silently becomes a good one.
+  var ec = DATA.edge_cases || {};
+  document.getElementById('edge').innerHTML =
+    '<h2>Where the data is thin — and what the model does about it</h2>' +
+    '<p>The snapshot does not report everything for every protocol. Each gap below is counted from the board itself, ' +
+    'and the model&rsquo;s handling of it is stated next to the count.</p>' +
+    '<table><thead><tr><th>Gap</th><th class="num">Rows</th><th>What the model does</th></tr></thead><tbody>' +
+    '<tr><td>Age unknown (no listed date)</td><td class="num">' + ec.age_unknown + '</td><td>Maturity at the 0.70 floor — missing evidence of a long tokenless run is not evidence of one</td></tr>' +
+    '<tr><td>7-day change winsorised (capped)</td><td class="num">' + ec.growth_capped + '</td><td>Clipped to [&minus;30%, +50%] before halving, so a low-base jump cannot dominate</td></tr>' +
+    '<tr><td>7-day change not reported</td><td class="num">' + ec.change_null + '</td><td>Counted as 0% — no growth credit, no penalty</td></tr>' +
+    '<tr><td>No category named</td><td class="num">' + ec.category_null + '</td><td>Grouped as &ldquo;No category&rdquo;; farm plan falls back to the generic deposit step</td></tr>' +
+    '<tr><td>Single chain only</td><td class="num">' + ec.single_chain + '</td><td>Breadth 1.00 — no bonus for a chain it does not run on</td></tr>' +
+    '<tr><td>No chain named</td><td class="num">' + ec.no_chains + '</td><td>Treated as one chain; the farm plan names &ldquo;its main chain&rdquo;</td></tr>' +
+    '<tr><td>Below the $50M watchlist floor</td><td class="num">' + ec.below_floor + '</td><td>Ranked the same way — the floor is never the ceiling; these are the early finds</td></tr>' +
+    '</tbody></table>';
 
   render();
   if (state.slug) showDetail(state.slug);

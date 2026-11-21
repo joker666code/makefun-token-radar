@@ -86,13 +86,14 @@ table.board { width: 100%; border-collapse: collapse; background: var(--panel);
 .live td.num, .live th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .bycat { margin-top: 26px; }
 .calib { margin-top: 26px; }
-.bycat h2, .calib h2 { font-size: 15px; margin: 0 0 4px; }
-.bycat p, .calib p { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
-.bycat table, .calib table { width: 100%; border-collapse: collapse; background: var(--panel);
+.audit { margin-top: 26px; }
+.bycat h2, .calib h2, .audit h2 { font-size: 15px; margin: 0 0 4px; }
+.bycat p, .calib p, .audit p { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
+.bycat table, .calib table, .audit table { width: 100%; border-collapse: collapse; background: var(--panel);
   border: 1px solid var(--line); font-size: 13px; }
-.bycat th, .bycat td, .calib th, .calib td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--line); }
-.bycat th, .calib th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
-.bycat td.num, .bycat th.num, .calib td.num, .calib th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.bycat th, .bycat td, .calib th, .calib td, .audit th, .audit td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--line); }
+.bycat th, .calib th, .audit th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.bycat td.num, .bycat th.num, .calib td.num, .calib th.num, .audit td.num, .audit th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .calib tr.median td { background: #2b2305; }
 .calib tr.median td.num strong { color: var(--amber); }
 .medflag { color: var(--amber); font-size: 11px; font-weight: 700; }

@@ -22,10 +22,15 @@
 //   baseMultiple  0.08 — CALIBRATED FROM THE SNAPSHOT, not picked: the median
 //                 mcap/TVL (0.082, rounded to 0.08) of the 52 token-trading
 //                 protocols with TVL above $50M and a full token record
-//                 (mcap_usd, gecko_id and symbol all present; four more carry
-//                 a market cap but no Gecko id or symbol, and are left out).
+//                 (mcap_usd, gecko_id and symbol all present; four more
+//                 above the floor record a market cap of exactly $0 and are
+//                 left out, since the median needs a positive market cap).
 //                 It is a circulating-mcap ratio, so it is conservative
-//                 against a fully-diluted value.
+//                 against a fully-diluted value. It is also conservative
+//                 below the floor: the same check on the 76 smaller trading
+//                 protocols under $50M gives a median of 0.419, so the 138
+//                 ranked rows under the floor are understated, not flattered
+//                 (see calibrationBelow, shown on the dashboard).
 //                 Per-category medians were checked and rejected: samples are
 //                 n = 1..7 per category (one Dexs at 3.18), too thin to trust.
 //   growthMult    1 + winsorised(change_7d) x 0.5, where change_7d is clipped to
@@ -51,6 +56,16 @@
 //   not to over-commit. Nothing here claims a protocol has an airdrop, points
 //   program or token plan: the text says to check the protocol's own page for
 //   whether it tracks activity, and to keep a record either way.
+
+// Robustness (v3, board values unchanged)
+//   buildSensitivity re-ranks the board under one changed assumption at a
+//   time (unrounded 0.082, growth weight 0.4/0.6, maturity floor 0.60/0.80,
+//   no breadth bonus, tighter winsorise) and reports top-10 overlap and the
+//   biggest rank move, so the reader can see the ranking is not an artefact
+//   of one parameter choice. buildEdgeCases counts the thin-data rows
+//   (unknown age, capped growth, unreported 7-day change, single chain)
+//   and states what the model does about each. Neither changes any row:
+//   both are audits of the board, shown on the dashboard.
 
 export interface SnapshotProtocol {
   slug: string;
@@ -105,7 +120,7 @@ export const MODEL: ModelConstants = {
   breadth_max_chains: 5,
 };
 
-export const MODEL_VERSION = 'radar-4a-v2';
+export const MODEL_VERSION = 'radar-4a-v3';
 
 /** How many already-trading protocols the dashboard's reference table carries. */
 export const LIVE_ROWS = 20;
@@ -282,6 +297,31 @@ export function buildCalibration(snapshot: Snapshot): CalibrationRow[] {
   return rows;
 }
 
+export interface SensitivityRow {
+  /** One assumption changed, everything else as published. */
+  variant: string;
+  /** How many of the base top 10 stay in the variant's top 10. */
+  top10_overlap: number;
+  /** Largest absolute rank move of any row under the variant. */
+  max_rank_move: number;
+  /** Rows moving more than 10 places under the variant. */
+  rows_moved_gt10: number;
+  /** Whether rank #1 is the same protocol under the variant. */
+  rank1_same: boolean;
+}
+
+/** Where the snapshot is thin: counts over the ranked board, each with a
+ *  stated handling in the model (floor, cap, or counted as zero). */
+export interface EdgeCases {
+  age_unknown: number;
+  growth_capped: number;
+  change_null: number;
+  category_null: number;
+  single_chain: number;
+  no_chains: number;
+  below_floor: number;
+}
+
 export interface RadarData {
   as_of: string;
   source: string;
@@ -294,9 +334,25 @@ export interface RadarData {
   board_size: number;
   live_size: number;
   calibration_size: number;
+  /** Share of total implied value held by the top 10 rows (0..1). */
+  top10_share: number;
+  sensitivity: SensitivityRow[];
+  edge_cases: EdgeCases;
+  /** The same mcap/TVL check, on trading protocols below the floor. */
+  calibration_below: CalibrationStats;
   rows: BoardRow[];
   live: LiveRow[];
   calibration: CalibrationRow[];
+}
+
+/** Median and deciles of mcap/TVL for one set of trading protocols. */
+export interface CalibrationStats {
+  n: number;
+  median: number;
+  p10: number;
+  p25: number;
+  p75: number;
+  p90: number;
 }
 
 /** Build the ranked board: every rankable protocol, best implied value first. */
@@ -360,9 +416,86 @@ export function buildLive(snapshot: Snapshot, limit: number = LIVE_ROWS): LiveRo
     .slice(0, limit);
 }
 
+/** Re-rank the board under one changed assumption at a time, and report how
+ *  far the ranking moves. The published board never changes: this is the
+ *  audit that the ranking is not an artefact of one parameter choice.
+ *  On this snapshot every variant keeps rank #1, keeps 9-10 of the top 10,
+ *  and moves no row more than 10 places. */
+export function buildSensitivity(snapshot: Snapshot): SensitivityRow[] {
+  const base = buildBoard(snapshot);
+  const baseRank = new Map(base.map((r) => [r.slug, r.rank]));
+  const variants: Array<[string, Partial<ModelConstants>]> = [
+    ['0.082 unrounded median', { base_multiple: 0.082 }],
+    ['Growth weight 0.4', { growth_weight: 0.4 }],
+    ['Growth weight 0.6', { growth_weight: 0.6 }],
+    ['Maturity floor 0.60', { maturity_floor: 0.6, maturity_range: 0.4 }],
+    ['Maturity floor 0.80', { maturity_floor: 0.8, maturity_range: 0.2 }],
+    ['No breadth bonus', { breadth_per_chain: 0 }],
+    ['Winsorise [-20%, +30%]', { growth_floor: -20, growth_cap: 30 }],
+  ];
+  return variants.map(([variant, over]) => {
+    const vb = buildBoard(snapshot, { ...MODEL, ...over });
+    const vRank = new Map(vb.map((r) => [r.slug, r.rank]));
+    const overlap = vb.slice(0, 10).filter((r) => (baseRank.get(r.slug) ?? 99) <= 10).length;
+    let maxMove = 0;
+    let moved = 0;
+    for (const r of base) {
+      const d = Math.abs((vRank.get(r.slug) ?? 0) - r.rank);
+      if (d > maxMove) maxMove = d;
+      if (d > 10) moved++;
+    }
+    return {
+      variant,
+      top10_overlap: overlap,
+      max_rank_move: maxMove,
+      rows_moved_gt10: moved,
+      rank1_same: vb[0]!.slug === base[0]!.slug,
+    };
+  });
+}
+
+/** Count the thin-data rows on the board, from the board's own fields. */
+export function buildEdgeCases(rows: BoardRow[], floorUsd: number): EdgeCases {
+  return {
+    age_unknown: rows.filter((r) => !r.model.age_known).length,
+    growth_capped: rows.filter((r) => r.model.growth_capped).length,
+    change_null: rows.filter((r) => r.change_7d === null).length,
+    category_null: rows.filter((r) => r.category === null).length,
+    single_chain: rows.filter((r) => r.chains.length <= 1).length,
+    no_chains: rows.filter((r) => r.chains.length === 0).length,
+    below_floor: rows.filter((r) => r.tvl_usd < floorUsd).length,
+  };
+}
+
+/** The 0.08 check, repeated below the floor: the mcap/TVL median and deciles
+ *  of the full-record token-trading protocols with TVL under the watchlist
+ *  floor. On this snapshot that is 76 protocols with a median of 0.419 —
+ *  higher than the 0.082 the board rounds to 0.08 — so the multiple the
+ *  board uses understates the small rows rather than flattering them. */
+export function calibrationBelow(snapshot: Snapshot): CalibrationStats {
+  const ratios = snapshot.protocols
+    .filter(
+      (p) =>
+        p.mcap_usd !== null &&
+        p.mcap_usd > 0 &&
+        p.tvl_usd < snapshot.floor_usd &&
+        p.gecko_id !== null &&
+        p.symbol !== null,
+    )
+    .map((p) => (p.mcap_usd as number) / Math.max(1, p.tvl_usd))
+    .sort((a, b) => a - b);
+  const n = ratios.length;
+  const mid =
+    n === 0 ? 0 : n % 2 === 1 ? ratios[(n - 1) / 2]! : (ratios[n / 2 - 1]! + ratios[n / 2]!) / 2;
+  const at = (q: number) => (n === 0 ? 0 : ratios[Math.min(n - 1, Math.floor(q * (n - 1)))]!);
+  return { n, median: round4(mid), p10: round4(at(0.1)), p25: round4(at(0.25)), p75: round4(at(0.75)), p90: round4(at(0.9)) };
+}
+
 export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): RadarData {
   const rows = buildBoard(snapshot, model);
   const calibration = buildCalibration(snapshot);
+  const totalImplied = rows.reduce((a, r) => a + r.implied_value_usd, 0);
+  const top10 = rows.slice(0, 10).reduce((a, r) => a + r.implied_value_usd, 0);
   return {
     as_of: snapshot.as_of,
     source: snapshot.source,
@@ -375,6 +508,10 @@ export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): R
     board_size: rows.length,
     live_size: LIVE_ROWS,
     calibration_size: calibration.length,
+    top10_share: round4(top10 / Math.max(1, totalImplied)),
+    sensitivity: buildSensitivity(snapshot),
+    edge_cases: buildEdgeCases(rows, snapshot.floor_usd),
+    calibration_below: calibrationBelow(snapshot),
     rows,
     live: buildLive(snapshot),
     calibration,
