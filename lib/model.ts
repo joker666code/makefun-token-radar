@@ -21,8 +21,11 @@
 //   implied = TVL x baseMultiple x growthMult x maturityMult x breadthMult
 //   baseMultiple  0.08 — CALIBRATED FROM THE SNAPSHOT, not picked: the median
 //                 mcap/TVL (0.082, rounded to 0.08) of the 52 token-trading
-//                 protocols with TVL above $50M. It is a circulating-mcap
-//                 ratio, so it is conservative against a fully-diluted value.
+//                 protocols with TVL above $50M and a full token record
+//                 (mcap_usd, gecko_id and symbol all present; four more carry
+//                 a market cap but no Gecko id or symbol, and are left out).
+//                 It is a circulating-mcap ratio, so it is conservative
+//                 against a fully-diluted value.
 //                 Per-category medians were checked and rejected: samples are
 //                 n = 1..7 per category (one Dexs at 3.18), too thin to trust.
 //   growthMult    1 + winsorised(change_7d) x 0.5, where change_7d is clipped to
@@ -102,7 +105,7 @@ export const MODEL: ModelConstants = {
   breadth_max_chains: 5,
 };
 
-export const MODEL_VERSION = 'radar-4a-v1';
+export const MODEL_VERSION = 'radar-4a-v2';
 
 /** How many already-trading protocols the dashboard's reference table carries. */
 export const LIVE_ROWS = 20;
@@ -204,6 +207,10 @@ export interface BoardRow {
   on_watchlist: boolean;
   token_status: 'records-no-token';
   implied_value_usd: number;
+  /** Total capital the farm plan puts at risk (steps 2 + 3), in dollars. */
+  farm_capital_usd: number;
+  /** Holding period the farm plan assumes, in days. */
+  farm_hold_days: number;
   model: {
     base_multiple: number;
     growth_raw_pct: number | null;
@@ -228,6 +235,53 @@ export interface LiveRow {
   mcap_tvl: number;
 }
 
+/** One protocol behind the 0.08 calibration: a token that trades, TVL at or
+ *  above the watchlist floor, and a full token record (market cap, Gecko id
+ *  and symbol all present). On this snapshot that is 52 protocols; the median
+ *  of their mcap/TVL ratios is 0.082, rounded to the 0.08 the board uses.
+ *  `median_pair` marks the two middle rows (even count), whose midpoint is
+ *  the median. Rows sort by mcap/TVL ascending, cheapest first. */
+export interface CalibrationRow {
+  slug: string;
+  name: string;
+  category: string | null;
+  tvl_usd: number;
+  mcap_usd: number;
+  mcap_tvl: number;
+  median_pair: boolean;
+}
+
+/** The calibration set, in mcap/TVL order. */
+export function buildCalibration(snapshot: Snapshot): CalibrationRow[] {
+  const rows = snapshot.protocols
+    .filter(
+      (p) =>
+        p.mcap_usd !== null &&
+        p.mcap_usd > 0 &&
+        p.tvl_usd >= snapshot.floor_usd &&
+        p.gecko_id !== null &&
+        p.symbol !== null,
+    )
+    .map((p) => ({
+      slug: p.slug,
+      name: p.name,
+      category: p.category,
+      tvl_usd: p.tvl_usd,
+      mcap_usd: p.mcap_usd as number,
+      mcap_tvl: round4((p.mcap_usd as number) / Math.max(1, p.tvl_usd)),
+      median_pair: false,
+    }))
+    .sort((a, b) => a.mcap_tvl - b.mcap_tvl || a.slug.localeCompare(b.slug));
+  const n = rows.length;
+  if (n > 0) {
+    const lo = Math.floor((n - 1) / 2);
+    const hi = Math.ceil((n - 1) / 2);
+    rows[lo]!.median_pair = true;
+    rows[hi]!.median_pair = true;
+  }
+  return rows;
+}
+
 export interface RadarData {
   as_of: string;
   source: string;
@@ -235,11 +289,14 @@ export interface RadarData {
   model: ModelConstants;
   model_version: string;
   universe_size: number;
+  snapshot_size: number;
   watchlist_size: number;
   board_size: number;
   live_size: number;
+  calibration_size: number;
   rows: BoardRow[];
   live: LiveRow[];
+  calibration: CalibrationRow[];
 }
 
 /** Build the ranked board: every rankable protocol, best implied value first. */
@@ -254,32 +311,37 @@ export function buildBoard(snapshot: Snapshot, model: ModelConstants = MODEL): B
       b.p.tvl_usd - a.p.tvl_usd ||
       (a.p.slug < b.p.slug ? -1 : a.p.slug > b.p.slug ? 1 : 0),
   );
-  return scored.map(({ p, s }, i) => ({
-    rank: i + 1,
-    slug: p.slug,
-    name: p.name,
-    category: p.category,
-    chains: p.chains,
-    tvl_usd: p.tvl_usd,
-    change_7d: p.change_7d,
-    listed_at: p.listed_at,
-    age_days: s.age,
-    on_watchlist: watch.has(p.slug),
-    token_status: 'records-no-token' as const,
-    implied_value_usd: s.implied,
-    model: {
-      base_multiple: model.base_multiple,
-      growth_raw_pct: s.growthRaw,
-      growth_winsorised_pct: s.growthWinsorised,
-      growth_multiplier: s.growthMult,
-      growth_capped: s.growthCapped,
-      maturity_multiplier: s.maturityMult,
-      breadth_multiplier: s.breadthMult,
+  return scored.map(({ p, s }, i) => {
+    const plan = farmPlan(p, s.age);
+    return {
+      rank: i + 1,
+      slug: p.slug,
+      name: p.name,
+      category: p.category,
+      chains: p.chains,
+      tvl_usd: p.tvl_usd,
+      change_7d: p.change_7d,
+      listed_at: p.listed_at,
       age_days: s.age,
-      age_known: s.ageKnown,
-    },
-    farm_steps: farmSteps(p, s.age),
-  }));
+      on_watchlist: watch.has(p.slug),
+      token_status: 'records-no-token' as const,
+      implied_value_usd: s.implied,
+      farm_capital_usd: plan.capital,
+      farm_hold_days: plan.hold,
+      model: {
+        base_multiple: model.base_multiple,
+        growth_raw_pct: s.growthRaw,
+        growth_winsorised_pct: s.growthWinsorised,
+        growth_multiplier: s.growthMult,
+        growth_capped: s.growthCapped,
+        maturity_multiplier: s.maturityMult,
+        breadth_multiplier: s.breadthMult,
+        age_days: s.age,
+        age_known: s.ageKnown,
+      },
+      farm_steps: plan.steps,
+    };
+  });
 }
 
 /** The already-trading reference set, biggest market cap first. */
@@ -300,18 +362,22 @@ export function buildLive(snapshot: Snapshot, limit: number = LIVE_ROWS): LiveRo
 
 export function buildRadar(snapshot: Snapshot, model: ModelConstants = MODEL): RadarData {
   const rows = buildBoard(snapshot, model);
+  const calibration = buildCalibration(snapshot);
   return {
     as_of: snapshot.as_of,
     source: snapshot.source,
     floor_usd: snapshot.floor_usd,
     model,
     model_version: MODEL_VERSION,
-    universe_size: rows.length,
+    universe_size: snapshot.protocols.length,
+    snapshot_size: snapshot.protocols.length,
     watchlist_size: snapshot.watchlist.length,
     board_size: rows.length,
     live_size: LIVE_ROWS,
+    calibration_size: calibration.length,
     rows,
     live: buildLive(snapshot),
+    calibration,
   };
 }
 
@@ -424,14 +490,23 @@ function secondAction(p: SnapshotProtocol, capital: number, chain: string): stri
   return `Open a second position of $${half} in a different pool or vault on ${chain}, so one pool pausing does not end the farm; total at risk is now $${total}`;
 }
 
+/** A farm plan: the six steps plus the totals the dashboard shows at a glance. */
+export interface FarmPlan {
+  steps: string[];
+  /** Total capital at risk (steps 2 + 3), in dollars. */
+  capital: number;
+  /** Holding period, in days. */
+  hold: number;
+}
+
 /**
- * Six concrete steps for one protocol. Every step carries its cost and its
+ * Six concrete steps for one protocol, with the plan's totals. Every step carries its cost and its
  * time in the text; the gate counts 3-12 steps of 20-600 characters each.
  * Steps 4 and 5 branch on the protocol's category, and the totals in steps
  * 3 and 5 agree with each other. Nothing assumes an airdrop, points program
  * or yield exists: step 4 records whether the protocol shows one, or not.
  */
-export function farmSteps(p: SnapshotProtocol, age: number | null): string[] {
+export function farmPlan(p: SnapshotProtocol, age: number | null): FarmPlan {
   const chain = chainOf(p);
   const spiked =
     typeof p.change_7d === 'number' && Number.isFinite(p.change_7d) && p.change_7d > 50;
@@ -453,7 +528,12 @@ export function farmSteps(p: SnapshotProtocol, age: number | null): string[] {
     step5,
     `Unwind by withdrawing to ${secondChain === chain ? chain : `${chain} or ${secondChain}`}, keep $10 of gas in reserve, and stop at once if withdrawals pause, the health check fails, or terms change — never chase a farm that locks you out. Cost: $1-5 gas to exit. Time: 15 minutes.`,
   ];
-  return steps.map((s) => (s.length > 600 ? `${s.slice(0, 597)}...` : s));
+  return { steps: steps.map((s) => (s.length > 600 ? `${s.slice(0, 597)}...` : s)), capital: total, hold };
+}
+
+/** The six steps alone, for callers that only need the text. */
+export function farmSteps(p: SnapshotProtocol, age: number | null): string[] {
+  return farmPlan(p, age).steps;
 }
 
 /** Gate-shaped self-check: null when the board is valid, else the first problem. */

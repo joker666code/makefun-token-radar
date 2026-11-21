@@ -34,7 +34,9 @@ h1 .tag { font-size: 11px; color: var(--bg); background: var(--accent);
 .controls label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
 .controls label.check { flex-direction: row; align-items: center; gap: 6px; padding-bottom: 6px; color: var(--text); }
 .controls input[type=search], .controls select { background: var(--panel); color: var(--text);
-  border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; font-size: 13px; min-width: 150px; }
+  border: 1px solid var(--line); border-radius: 6px; padding: 7px 26px 7px 9px; font-size: 13px; min-width: 170px; }
+.controls select#sort { min-width: 218px; }
+.controls select#cat { min-width: 180px; }
 .count { color: var(--muted); font-size: 13px; margin: 14px 2px 8px; }
 .count b { color: var(--text); }
 table.board { width: 100%; border-collapse: collapse; background: var(--panel);
@@ -61,7 +63,7 @@ table.board { width: 100%; border-collapse: collapse; background: var(--panel);
 .bar { height: 8px; background: var(--panel2); border-radius: 4px; overflow: hidden; }
 .bar i { display: block; height: 100%; background: var(--accent); }
 .detail { background: var(--panel); border: 1px solid var(--accent-dim); border-radius: 10px;
-  padding: 16px 18px; margin: 0 0 16px; }
+  padding: 16px 18px; margin: 0 0 16px; scroll-margin-top: 12px; }
 .detail h2 { margin: 0 0 4px; font-size: 20px; }
 .detail .meta { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
 .detail h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 14px 0 6px; }
@@ -82,5 +84,17 @@ table.board { width: 100%; border-collapse: collapse; background: var(--panel);
 .live th, .live td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--line); }
 .live th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
 .live td.num, .live th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.bycat { margin-top: 26px; }
+.calib { margin-top: 26px; }
+.bycat h2, .calib h2 { font-size: 15px; margin: 0 0 4px; }
+.bycat p, .calib p { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
+.bycat table, .calib table { width: 100%; border-collapse: collapse; background: var(--panel);
+  border: 1px solid var(--line); font-size: 13px; }
+.bycat th, .bycat td, .calib th, .calib td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--line); }
+.bycat th, .calib th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.bycat td.num, .bycat th.num, .calib td.num, .calib th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.calib tr.median td { background: #2b2305; }
+.calib tr.median td.num strong { color: var(--amber); }
+.medflag { color: var(--amber); font-size: 11px; font-weight: 700; }
 footer { color: var(--faint); font-size: 12px; border-top: 1px solid var(--line); margin-top: 26px; padding-top: 14px; }
 .empty { color: var(--muted); padding: 18px; text-align: center; }

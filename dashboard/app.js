@@ -77,7 +77,8 @@
   document.getElementById('method').innerHTML =
     '<h2>How the value is worked out</h2>' +
     '<div>Implied value = <code>TVL &times; 0.08 &times; growth &times; maturity &times; breadth</code>. ' +
-    'The 0.08 is the snapshot&rsquo;s own median mcap/TVL (0.082, n = 52 token-trading protocols with TVL above $50M), ' +
+    'The 0.08 is the snapshot&rsquo;s own median mcap/TVL (0.082, n = 52 token-trading protocols with TVL above $50M ' +
+    'and a full token record — market cap, Gecko id and symbol all present; the full set is listed at the foot of this page), ' +
     'a circulating-mcap ratio, so it is conservative against a fully-diluted value. Growth is the 7-day TVL change ' +
     'winsorised to [&minus;30%, +50%] and halved; maturity is 0.70 + min(age, 1460d)/1460 &times; 0.30 (unknown age: 0.70 floor); ' +
     'breadth is +1% per extra chain, at most +5%. The three factors after 0.08 are stated dampers and caps, not fitted values.</div>' +
@@ -136,6 +137,7 @@
       if (key === 'tvl') return b.tvl_usd - a.tvl_usd;
       if (key === 'growth') return (b.change_7d || 0) - (a.change_7d || 0);
       if (key === 'age') return (b.age_days || 0) - (a.age_days || 0);
+      if (key === 'density') return (b.implied_value_usd / b.tvl_usd) - (a.implied_value_usd / a.tvl_usd);
       return b.implied_value_usd - a.implied_value_usd;
     });
     return list;
@@ -191,6 +193,10 @@
       ' &times; ' + m.maturity_multiplier.toFixed(4) + ' &times; ' + m.breadth_multiplier.toFixed(2) +
       ' = ' + usdFull(r.implied_value_usd);
     detailEl.hidden = false;
+    var catPeers = rows.filter(function (x) { return (x.category || '—') === (r.category || '—'); });
+    var catRank = 1 + catPeers.filter(function (x) { return x.implied_value_usd > r.implied_value_usd; }).length;
+    var tvlRank = 1 + rows.filter(function (x) { return x.tvl_usd > r.tvl_usd; }).length;
+    var share = (100 * r.implied_value_usd / totalImplied).toFixed(1);
     detailEl.innerHTML =
       '<button id="closedetail" type="button">Close</button>' +
       '<h2>' + esc(r.name) + (r.on_watchlist ? '<span class="badge">WATCHLIST</span>' : '') + '</h2>' +
@@ -199,6 +205,10 @@
       ' &middot; 7d ' + pct(r.change_7d) + ' &middot; tracked since ' + esc(r.listed_at || 'date not reported') +
       ' (' + ageFmt(r.age_days) + ')' + (m.age_known ? '' : ' — age unknown, maturity at floor') +
       ' &middot; the snapshot records no token for this protocol.</div>' +
+      '<div class="meta">#' + catRank + ' of ' + catPeers.length + ' in ' + esc(r.category || 'no category') +
+      ' &middot; TVL rank #' + tvlRank + ' of ' + rows.length +
+      ' &middot; ' + share + '% of the board&rsquo;s total implied value' +
+      ' &middot; farm size $' + r.farm_capital_usd + ' at risk for ' + r.farm_hold_days + ' days.</div>' +
       '<h3>Implied value — how the number is built</h3>' +
       '<div class="breakdown">' +
       '<div><b>' + usd(base) + '</b><span>Base: TVL &times; 0.08 (snapshot median mcap/TVL)</span></div>' +
@@ -218,8 +228,56 @@
       tbody.querySelectorAll('tr.sel').forEach(function (tr) { tr.classList.remove('sel'); });
     });
     render();
-    detailEl.scrollIntoView({ block: 'nearest' });
+    detailEl.scrollIntoView({ block: 'start' });
   }
+
+  // ---- value by category ---------------------------------------------------
+  // Same rows, grouped: where the board's implied value sits, and which
+  // protocol leads each category. Pure presentation over board.json.
+  var bycat = {};
+  rows.forEach(function (r) {
+    var c = r.category || 'No category';
+    if (!bycat[c]) bycat[c] = { n: 0, total: 0, top: r };
+    bycat[c].n += 1;
+    bycat[c].total += r.implied_value_usd;
+  });
+  var catList = Object.keys(bycat).map(function (c) {
+    return { name: c, n: bycat[c].n, total: bycat[c].total, top: bycat[c].top };
+  }).sort(function (a, b) { return b.total - a.total; });
+  document.getElementById('bycat').innerHTML =
+    '<h2>Where the value sits — by category</h2>' +
+    '<p>The board&rsquo;s ' + usd(totalImplied) + ' of implied value across ' + catList.length +
+    ' categories. Risk curators lead because the biggest tokenless treasuries sit there; ' +
+    'the long tail is where the early finds are — ' + rows.filter(function (r) { return r.tvl_usd < DATA.floor_usd; }).length +
+    ' of the ' + rows.length + ' rows sit below the $50M watchlist floor.</p>' +
+    '<table><thead><tr><th>Category</th><th class="num">Protocols</th><th class="num">Total implied</th><th class="num">Share</th><th>Top protocol</th></tr></thead><tbody>' +
+    catList.map(function (c) {
+      return '<tr><td>' + esc(c.name) + '</td><td class="num">' + c.n + '</td>' +
+        '<td class="num">' + usd(c.total) + '</td>' +
+        '<td class="num">' + (100 * c.total / totalImplied).toFixed(1) + '%</td>' +
+        '<td>#' + c.top.rank + ' ' + esc(c.top.name) + ' (' + usd(c.top.implied_value_usd) + ')</td></tr>';
+    }).join('') + '</tbody></table>';
+
+  // ---- calibration set -------------------------------------------------------
+  // Every protocol the 0.08 multiple is taken from, so the median is auditable
+  // in the page instead of asserted: sorted by mcap/TVL, cheapest first, the
+  // two middle rows highlighted — their midpoint is the 0.082 the board rounds.
+  var cal = DATA.calibration || [];
+  document.getElementById('calibration').innerHTML =
+    '<h2>Where the 0.08 comes from — the calibration set</h2>' +
+    '<p>These ' + cal.length + ' protocols already have a token that trades, hold TVL at or above the $50M floor, ' +
+    'and carry a full token record (market cap, Gecko id and symbol). Four more carry a market cap but no Gecko id ' +
+    'or symbol and are left out. Sorted by mcap/TVL, lowest first; the highlighted pair is the median — ' +
+    'their midpoint is 0.082, rounded to the 0.08 the board multiplies by. Deciles: ' +
+    d.p10 + ' / ' + d.p25 + ' / ' + d.p50 + ' / ' + d.p75 + ' / ' + d.p90 + '.</p>' +
+    '<table><thead><tr><th>#</th><th>Protocol</th><th>Category</th><th class="num">TVL</th><th class="num">Market cap</th><th class="num">mcap / TVL</th></tr></thead><tbody>' +
+    cal.map(function (p, i) {
+      return '<tr' + (p.median_pair ? ' class="median"' : '') + '><td>' + (i + 1) + '</td>' +
+        '<td>' + esc(p.name) + (p.median_pair ? ' <span class="medflag">MEDIAN</span>' : '') + '</td>' +
+        '<td>' + esc(p.category || '—') + '</td>' +
+        '<td class="num">' + usd(p.tvl_usd) + '</td><td class="num">' + usd(p.mcap_usd) + '</td>' +
+        '<td class="num"><strong>' + p.mcap_tvl.toFixed(3) + '</strong></td></tr>';
+    }).join('') + '</tbody></table>';
 
   // ---- already-trading reference ------------------------------------------
   var live = DATA.live || [];
