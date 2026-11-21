@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Token Radar — pre-token protocols ranked by implied value</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main id="app" aria-busy="true">
+  <header class="top">
+    <div>
+      <h1>TOKEN RADAR <span class="tag">lane 4A</span></h1>
+      <p class="sub">Which protocol is worth farming next — and what to do about it. Every row is a protocol the snapshot <strong>records no token</strong> for, ranked by what its launch would be worth if its record stayed as it is.</p>
+    </div>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <section class="method" id="method" aria-label="How the value is worked out"></section>
+
+  <section class="controls" aria-label="Filter and sort the board">
+    <label>Search <input id="q" type="search" placeholder="name or slug…" autocomplete="off"></label>
+    <label>Category <select id="cat"><option value="all">All categories</option></select></label>
+    <label>Min TVL <select id="mintvl">
+      <option value="0">Any TVL</option>
+      <option value="50000000">$50M+ (watchlist floor)</option>
+      <option value="100000000">$100M+</option>
+      <option value="500000000">$500M+</option>
+    </select></label>
+    <label class="check"><input id="watch" type="checkbox"> Watchlist only (40)</label>
+    <label>Sort <select id="sort">
+      <option value="implied">Implied value ↓</option>
+      <option value="tvl">TVL ↓</option>
+      <option value="growth">7-day growth ↓</option>
+      <option value="age">Age ↓</option>
+    </select></label>
+  </section>
+
+  <p class="count" id="count"></p>
+
+  <section class="detail" id="detail" aria-label="Protocol detail" hidden></section>
+
+  <table class="board" id="board">
+    <thead><tr>
+      <th>#</th><th>Protocol</th><th>Category</th><th>Chains</th>
+      <th class="num">TVL</th><th class="num">7d</th><th class="num">Age</th>
+      <th class="num">Implied value</th><th class="barcol">Share of #1</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <section class="live" id="live" aria-label="Already trading"></section>
+
+  <footer>
+    <p>Source: DefiLlama protocols snapshot, fetched 2026-11-14. “Records no token” means the snapshot carries no gecko_id, symbol or market cap for the protocol — it is the record, not proof a token does not exist. Implied values are this board's own claim, not a prediction that a token will launch, or when, or at what price. Model <span id="modelver"></span>.</p>
+  </footer>
+</main>
+<script src="../data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
