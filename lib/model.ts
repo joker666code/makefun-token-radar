@@ -55,7 +55,12 @@
 //   step 1 is always wallet/gas setup, step 6 is always how to unwind and what
 //   not to over-commit. Nothing here claims a protocol has an airdrop, points
 //   program or token plan: the text says to check the protocol's own page for
-//   whether it tracks activity, and to keep a record either way.
+//   whether it tracks activity, and to keep a record either way. v4: step 2
+//   states the reason whenever the size was capped (record under 180 days,
+//   7-day jump over 50%), so the sizing is auditable from the plan itself;
+//   a cap that did not bind is not mentioned, and no pool or vault is ever
+//   named — the snapshot carries no pool-level data, so naming one would be
+//   invented.
 
 // Robustness (v3, board values unchanged)
 //   buildSensitivity re-ranks the board under one changed assumption at a
@@ -66,6 +71,10 @@
 //   (unknown age, capped growth, unreported 7-day change, single chain)
 //   and states what the model does about each. Neither changes any row:
 //   both are audits of the board, shown on the dashboard.
+//   v4: the two-variable combo (growth weight 0.6 + maturity floor 0.60) was
+//   computed off-table — top-10 9/10, biggest move 9, no row over 10 — inside
+//   the same band as the single-variable variants, so it was NOT added as an
+//   eighth row: the table already says what the combo would say.
 
 export interface SnapshotProtocol {
   slug: string;
@@ -120,7 +129,7 @@ export const MODEL: ModelConstants = {
   breadth_max_chains: 5,
 };
 
-export const MODEL_VERSION = 'radar-4a-v3';
+export const MODEL_VERSION = 'radar-4a-v4';
 
 /** How many already-trading protocols the dashboard's reference table carries. */
 export const LIVE_ROWS = 20;
@@ -531,16 +540,31 @@ function chainOf(p: SnapshotProtocol): string {
 }
 
 /** One farm position's size, from the protocol's own TVL tier, then capped for
- *  young protocols and 7-day spikes: farm small where the record is thinnest. */
-function capitalFor(p: SnapshotProtocol, age: number | null, spiked: boolean): number {
+ *  young protocols and 7-day spikes: farm small where the record is thinnest.
+ *  `notes` records, in plain words, every cap that actually bound — the farm
+ *  plan quotes them in step 2, so the reader sees why the size is what it is
+ *  instead of taking it on trust. A cap that did not bind (tier already at or
+ *  below the cap) is not mentioned. */
+function capitalFor(
+  p: SnapshotProtocol,
+  age: number | null,
+  spiked: boolean,
+): { capital: number; notes: string[] } {
   let capital: number;
   if (p.tvl_usd >= 1_000_000_000) capital = 250;
   else if (p.tvl_usd >= 100_000_000) capital = 150;
   else if (p.tvl_usd >= 25_000_000) capital = 100;
   else capital = 50;
-  if (age !== null && age < 180) capital = Math.min(capital, 100);
-  if (spiked) capital = capital >= 250 ? 150 : capital >= 150 ? 100 : 50;
-  return capital;
+  const notes: string[] = [];
+  if (age !== null && age < 180 && capital > 100) {
+    capital = 100;
+    notes.push('The size is capped at $100 because the record is under 180 days old.');
+  }
+  if (spiked && capital > 50) {
+    capital = capital >= 250 ? 150 : capital >= 150 ? 100 : 50;
+    notes.push('The size is cut a tier because the 7-day TVL jump topped 50%.');
+  }
+  return { capital, notes };
 }
 
 /** How long to hold: a short probe for young protocols, longer once the record
@@ -647,8 +671,9 @@ export function farmPlan(p: SnapshotProtocol, age: number | null): FarmPlan {
   const chain = chainOf(p);
   const spiked =
     typeof p.change_7d === 'number' && Number.isFinite(p.change_7d) && p.change_7d > 50;
-  const capital = capitalFor(p, age, spiked);
+  const { capital, notes: sizeNotes } = capitalFor(p, age, spiked);
   const hold = holdDaysFor(age);
+  const sizeNote = sizeNotes.length > 0 ? ` ${sizeNotes.join(' ')}` : '';
   const secondChain = p.chains && p.chains.length > 1 ? p.chains[1]! : chain;
   const half = Math.max(25, Math.round(capital / 2));
   const total = capital + half;
@@ -659,7 +684,7 @@ export function farmPlan(p: SnapshotProtocol, age: number | null): FarmPlan {
     : `After ${hold} days, record the position's profit or loss and do not add capital automatically; only continue if the first ${hold} days behaved as expected. Cost: no new capital. Time: 15 minutes, once.`;
   const steps: string[] = [
     `Set up a fresh wallet for ${p.name}, fund it with $${total + 20} on ${chain} ($${total} to farm, about $20 for gas), and save the seed phrase offline. Cost: about $20 in gas plus the deposit. Time: 15 minutes, once.`,
-    `${coreAction(p, capital, chain)}. Cost: $${capital} of capital at risk plus network gas of roughly $1-5 per transaction. Time: 20 minutes to open, then ${hold} days holding.`,
+    `${coreAction(p, capital, chain)}.${sizeNote} Cost: $${capital} of capital at risk plus network gas of roughly $1-5 per transaction. Time: 20 minutes to open, then ${hold} days holding.`,
     `${secondAction(p, capital, chain)}. Cost: about $${half} more capital plus $1-5 gas. Time: 15 minutes, once.`,
     `Once a week for ${weeks} weeks, open ${p.name}'s own page and check two things: ${healthCheck(p)}, and whether its TVL is still above $${tvlExit.toLocaleString('en-US')} (30% below today). If the protocol's page shows an activity or rewards page, note what it says; if it shows none, record that too. Save the date, the position value and a screenshot each week. Cost: no new capital, about $0-2 gas if you rebalance. Time: 10 minutes a week.`,
     step5,

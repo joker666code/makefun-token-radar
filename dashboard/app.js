@@ -269,12 +269,23 @@
   // two middle rows highlighted — their midpoint is the 0.082 the board rounds.
   var cal = DATA.calibration || [];
   var cb = DATA.calibration_below || { n: 0, median: 0, p10: 0, p25: 0, p75: 0, p90: 0 };
+  // The median pair, named: two unrelated protocols that land on the same
+  // ratio, so the reader sees the median is an agreement, not one outlier.
+  var medPair = cal.filter(function (p) { return p.median_pair; });
+  var medNote = '';
+  if (medPair.length === 2) {
+    medNote = ' The two middle rows are ' + esc(medPair[0].name) + ' (' +
+      esc(medPair[0].category || 'no category') + ', ' + usd(medPair[0].tvl_usd) + ' TVL) and ' +
+      esc(medPair[1].name) + ' (' + esc(medPair[1].category || 'no category') + ', ' +
+      usd(medPair[1].tvl_usd) + ' TVL) — different categories and very different sizes, both at 0.082 — ' +
+      'so the median is where two unrelated protocols agree, not one outlier\u2019s ratio.';
+  }
   document.getElementById('calibration').innerHTML =
     '<h2>Where the 0.08 comes from — the calibration set</h2>' +
     '<p>These ' + cal.length + ' protocols already have a token that trades, hold TVL at or above the $50M floor, ' +
     'and carry a full token record (market cap, Gecko id and symbol). Four more above the floor record a market cap of exactly $0 ' +
     'and are left out — the median needs a positive market cap to mean anything. Sorted by mcap/TVL, lowest first; the highlighted pair is the median — ' +
-    'their midpoint is 0.082, rounded to the 0.08 the board multiplies by. Deciles: ' +
+    'their midpoint is 0.082, rounded to the 0.08 the board multiplies by.' + medNote + ' Deciles: ' +
     d.p10 + ' / ' + d.p25 + ' / ' + d.p50 + ' / ' + d.p75 + ' / ' + d.p90 + '.</p>' +
     '<p>Does the 0.08 hold below the floor, where ' + rows.filter(function (r) { return r.tvl_usd < DATA.floor_usd; }).length + ' of the ' + rows.length + ' ranked rows sit? The same check on the ' +
     cb.n + ' smaller trading protocols below $50M gives a median of ' + cb.median.toFixed(3) + ' (deciles ' +
