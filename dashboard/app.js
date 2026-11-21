@@ -150,7 +150,7 @@
     var list = filtered();
     document.getElementById('count').innerHTML =
       'Showing <b>' + list.length + '</b> of ' + rows.length + ' ranked protocols' +
-      (state.watch ? ' — all ' + list.length + ' of the 40 watchlist protocols' : '') +
+      (state.watch ? (list.length === 40 ? ' — all 40 of the 40 watchlist protocols' : ' — ' + list.length + ' of the 40 watchlist protocols') : '') +
       (state.cat !== 'all' ? ' — ' + esc(state.cat) : '') + '. Click a row — or press Enter on it — for its farm plan.';
     if (!list.length) {
       tbody.innerHTML = '<tr><td colspan="9" class="empty">No protocol matches this filter.</td></tr>';
@@ -346,7 +346,8 @@
   document.getElementById('live').innerHTML =
     '<h2>Already trading — not a launch</h2>' +
     '<p>These protocols already have a token that trades, so they are not on the board. ' +
-    'Their market caps are the market&rsquo;s own values, and the mcap/TVL column is where the board&rsquo;s 0.08 multiple comes from.</p>' +
+    'Their market caps are the market&rsquo;s own values. The mcap/TVL ratio is the same ratio the board&rsquo;s 0.08 multiple is the median of — ' +
+    'that median comes from the full 52-protocol calibration set below, not from these top 20.</p>' +
     '<div class="tscroll" tabindex="0" role="region" aria-label="Already trading table — scroll horizontally to see all columns"><table><thead><tr><th>Protocol</th><th>Category</th><th class="num">TVL</th><th class="num">Market cap</th><th class="num">mcap / TVL</th></tr></thead><tbody>' +
     live.map(function (p) {
       return '<tr><td>' + esc(p.name) + '</td><td>' + esc(p.category || '—') + '</td>' +
@@ -385,7 +386,7 @@
     '<p>The snapshot does not report everything for every protocol. Each gap below is counted from the board itself, ' +
     'and the model&rsquo;s handling of it is stated next to the count.</p>' +
     '<div class="tscroll" tabindex="0" role="region" aria-label="Thin data table — scroll horizontally to see all columns"><table><thead><tr><th>Gap</th><th class="num">Rows</th><th>What the model does</th></tr></thead><tbody>' +
-    '<tr><td>Age unknown (no listed date)</td><td class="num">' + ec.age_unknown + '</td><td>Maturity at the 0.70 floor — missing evidence of a long tokenless run is not evidence of one</td></tr>' +
+    '<tr><td>Age unknown (no listed date)</td><td class="num">' + ec.age_unknown + '</td><td>Maturity at the 0.70 floor — missing evidence of a long tokenless run is not evidence of one; the farm holds 30 days, the short probe</td></tr>' +
     '<tr><td>7-day change winsorised (capped)</td><td class="num">' + ec.growth_capped + '</td><td>Clipped to [&minus;30%, +50%] before halving, so a low-base jump cannot dominate</td></tr>' +
     '<tr><td>7-day change not reported</td><td class="num">' + ec.change_null + '</td><td>Counted as 0% — no growth credit, no penalty</td></tr>' +
     '<tr><td>No category named</td><td class="num">' + ec.category_null + '</td><td>Grouped as &ldquo;No category&rdquo;; farm plan falls back to the generic deposit step</td></tr>' +

@@ -14,6 +14,10 @@ Model v4 (implied values still unchanged since v1 — only farm-plan wording and
 
 Model v5 (CSS/copy only — implied values still unchanged since v1): the type hierarchy is finished in four CSS declarations (protocol names 700-weight, slugs 10px in the standard muted tone for WCAG AA contrast, implied values 14px bold teal), and the sensitivity section cites the computed two-variable combination (growth 0.6 + maturity floor 0.60: top 10 kept 9/10, biggest move 9 places) in one footnote instead of an eighth table row. Review scores are now 5/5/5/5/4.9, the last 0.1 being teal deliberately marking both rank 1–3 and implied values as one "numbers that matter" motif.
 
+Model v6 (accessibility and narrow-viewport only — implied values still unchanged since v1): board rows are keyboard-operable (Enter/Space opens the detail, ArrowUp/Down moves between rows, roving tabindex keeps a single tab stop for the whole board), focus is a visible 2px teal ring, and every table sits in a horizontally scrolling region so the page holds at 390px with no page-level overflow. Review scores are now 5/5/5/5/5. The model itself is unchanged since v4, so the dashboard footer still reads radar-4a-v4.
+
+Model v7 (copy and one count-line fix only — implied values still unchanged since v1): the "Already trading" intro no longer says its mcap/TVL column is where the 0.08 comes from (that median comes from the 52-protocol calibration set; the top-20 table's own median is 1.194); the watchlist count line no longer says "all N of the 40" when another filter has narrowed the list below 40; and the thin-data table now states that age-unknown rows farm on the 30-day short probe. Review scores remain 5/5/5/5/5; no new review round was run for these three small corrections — each was verified against the snapshot and in the browser instead.
+
 ## Run it
 
 ```sh
