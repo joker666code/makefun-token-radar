@@ -151,7 +151,7 @@
     document.getElementById('count').innerHTML =
       'Showing <b>' + list.length + '</b> of ' + rows.length + ' ranked protocols' +
       (state.watch ? (list.length === 40 ? ' — all 40 of the 40 watchlist protocols' : ' — ' + list.length + ' of the 40 watchlist protocols') : '') +
-      (state.cat !== 'all' ? ' — ' + esc(state.cat) : '') + '. Click a row — or press Enter on it — for its farm plan.';
+      (state.cat !== 'all' ? ' — ' + esc(state.cat) : '') + '. Click a row — or press Enter on it — for its farm plan; Esc closes it.';
     if (!list.length) {
       tbody.innerHTML = '<tr><td colspan="9" class="empty">No protocol matches this filter.</td></tr>';
       return;
@@ -187,6 +187,9 @@
   // is unreliable, so drive it explicitly. The row handler below already
   // preventDefaults its own Left/Right, so this never double-scrolls.
   document.addEventListener('keydown', function (e) {
+    // Escape closes the open detail from anywhere (row, Close button, or
+    // a ?slug= deep link) and returns focus to the row it came from.
+    if (e.key === 'Escape' && !detailEl.hidden) { e.preventDefault(); closeDetail(); return; }
     if (e.defaultPrevented) return;
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
     var wrap = e.target.closest ? e.target.closest('.tscroll') : null;
@@ -220,6 +223,17 @@
 
   // ---- detail view ---------------------------------------------------------
   var detailEl = document.getElementById('detail');
+  // Shared by the Close button and the Escape key: hide the detail, clear
+  // the selection, and return focus to the row the detail came from (if it
+  // is still in the filtered list; otherwise focus simply stays put).
+  function closeDetail() {
+    if (detailEl.hidden) return;
+    var slug = state.slug;
+    detailEl.hidden = true; state.slug = '';
+    tbody.querySelectorAll('tr.sel').forEach(function (tr) { tr.classList.remove('sel'); });
+    var tr = slug ? tbody.querySelector('tr[data-slug="' + slug + '"]') : null;
+    if (tr) tr.focus();
+  }
   function showDetail(slug) {
     var r = null;
     rows.forEach(function (x) { if (x.slug === slug) r = x; });
@@ -265,13 +279,7 @@
       '<p class="note">This plan does not claim ' + esc(r.name) + ' will issue a token, has an airdrop, or tracks activity. ' +
       'It is a way to use the protocol so that, if it ever does reward past users, the record exists — sized so the cost of being wrong is one deliberate position, not a portfolio bet. ' +
       'No yield, emissions rate, slippage or impermanent-loss figure is assumed anywhere in this plan — the steps size the position, they do not forecast its return.</p>';
-    document.getElementById('closedetail').addEventListener('click', function () {
-      detailEl.hidden = true; state.slug = '';
-      tbody.querySelectorAll('tr.sel').forEach(function (tr) { tr.classList.remove('sel'); });
-      // Return focus to the row the detail came from.
-      var tr = tbody.querySelector('tr[data-slug="' + slug + '"]');
-      if (tr) tr.focus();
-    });
+    document.getElementById('closedetail').addEventListener('click', closeDetail);
     render();
     detailEl.scrollIntoView({ block: 'start' });
   }
