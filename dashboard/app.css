@@ -47,16 +47,16 @@ table.board { width: 100%; border-collapse: collapse; background: var(--panel);
 .board tbody tr { cursor: pointer; }
 .board tbody tr:hover, .board tbody tr.sel { background: #16263f; }
 .board td.num, .board th.num { text-align: right; font-variant-numeric: tabular-nums; }
-.board .name { font-weight: 600; }
+.board .name { font-weight: 700; }
 .board td:first-child { font-weight: 700; font-size: 15px; }
 /* The current top 3 are the scan anchor: their rank numerals carry the accent. */
 .board tbody tr:nth-child(-n+3) td:first-child { color: var(--accent); }
-.board td.num strong { color: var(--accent); }
+.board td.num strong { color: var(--accent); font-size: 14px; }
 .detail .equation { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px;
   background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; margin: 12px 0 0; color: var(--text); }
 .method details { margin-top: 8px; }
 .method summary { cursor: pointer; color: var(--text); font-size: 12px; }
-.board .slug { color: var(--faint); font-size: 11px; font-weight: 400; }
+.board .slug { color: var(--muted); font-size: 10px; font-weight: 400; }
 .badge { display: inline-block; font-size: 10px; font-weight: 700; color: #231a04;
   background: var(--amber); border-radius: 4px; padding: 1px 5px; margin-left: 6px; vertical-align: 1px; }
 .up { color: var(--green); } .down { color: var(--red); }

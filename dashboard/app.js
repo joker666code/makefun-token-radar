@@ -326,7 +326,8 @@
     (allRank1 ? 'Rank #1 stays rank #1 under every variant; ' : '') +
     'no row moves more than ' + maxMove + ' places under any single change — ' +
     'the ranking is driven by TVL and the snapshot, not by one parameter choice. The unrounded 0.082 moves nothing at all: it scales every row by the same 2.5%. ' +
-    'For scale, the calibration deciles span ' + d.p10 + ' to ' + d.p90 + ' — more than a hundredfold — so each implied value is a central estimate inside a wide band, not a precise price.</p>' +
+    'For scale, the calibration deciles span ' + d.p10 + ' to ' + d.p90 + ' — more than a hundredfold — so each implied value is a central estimate inside a wide band, not a precise price. ' +
+    'One two-variable combination was also computed (growth weight 0.6 with maturity floor 0.60): top 10 kept 9 of 10, biggest move 9 places — inside the range above, so it is cited here rather than added as an eighth row.</p>' +
     '<table><thead><tr><th>One change</th><th class="num">Top 10 kept</th><th class="num">Biggest rank move</th><th class="num">Rows moved &gt; 10</th><th>Rank #1 same?</th></tr></thead><tbody>' +
     sens.map(function (s) {
       return '<tr><td>' + esc(s.variant) + '</td><td class="num">' + s.top10_overlap + ' / 10</td>' +
