@@ -151,16 +151,19 @@
     document.getElementById('count').innerHTML =
       'Showing <b>' + list.length + '</b> of ' + rows.length + ' ranked protocols' +
       (state.watch ? ' — all ' + list.length + ' of the 40 watchlist protocols' : '') +
-      (state.cat !== 'all' ? ' — ' + esc(state.cat) : '') + '. Click any row for its farm plan.';
+      (state.cat !== 'all' ? ' — ' + esc(state.cat) : '') + '. Click a row — or press Enter on it — for its farm plan.';
     if (!list.length) {
       tbody.innerHTML = '<tr><td colspan="9" class="empty">No protocol matches this filter.</td></tr>';
       return;
     }
-    tbody.innerHTML = list.map(function (r) {
+    tbody.innerHTML = list.map(function (r, i) {
       var g = r.change_7d;
       var cls = g === null ? '' : (g >= 0 ? 'up' : 'down');
       var flag = r.model && r.model.growth_capped ? ' <span class="capflag" title="7-day change winsorised to the model cap">capped</span>' : '';
-      return '<tr data-slug="' + esc(r.slug) + '"' + (state.slug === r.slug ? ' class="sel"' : '') + '>' +
+      // Roving tabindex: only the first row is a tab stop; ArrowUp/Down
+      // moves focus (and the tab stop) between rows, so Tab never has to
+      // walk all 198 rows to get past the board.
+      return '<tr data-slug="' + esc(r.slug) + '" tabindex="' + (i === 0 ? 0 : -1) + '"' + (state.slug === r.slug ? ' class="sel"' : '') + '>' +
         '<td>' + r.rank + '</td>' +
         '<td><span class="name">' + esc(r.name) + '</span>' +
           (r.on_watchlist ? '<span class="badge">WATCHLIST</span>' : '') +
@@ -178,6 +181,41 @@
   tbody.addEventListener('click', function (e) {
     var tr = e.target.closest('tr[data-slug]');
     if (tr) showDetail(tr.getAttribute('data-slug'));
+  });
+  // Focused scroll regions scroll with Left/Right even when the region
+  // itself (not a row) has focus: native arrow scrolling of a plain div
+  // is unreliable, so drive it explicitly. The row handler below already
+  // preventDefaults its own Left/Right, so this never double-scrolls.
+  document.addEventListener('keydown', function (e) {
+    if (e.defaultPrevented) return;
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    var wrap = e.target.closest ? e.target.closest('.tscroll') : null;
+    if (!wrap) return;
+    e.preventDefault();
+    wrap.scrollBy({ left: e.key === 'ArrowRight' ? 160 : -160 });
+  });
+  tbody.addEventListener('keydown', function (e) {
+    var tr = e.target.closest('tr[data-slug]');
+    if (!tr) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      showDetail(tr.getAttribute('data-slug'));
+      // Keyboard flow lands inside the detail, on its Close button.
+      document.getElementById('closedetail').focus();
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      var next = e.key === 'ArrowDown' ? tr.nextElementSibling : tr.previousElementSibling;
+      if (next) {
+        tr.tabIndex = -1; next.tabIndex = 0; next.focus();
+      }
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      // Horizontal scroll of the board's own scroll region: the wrapper is
+      // focusable too, but a focused row must be able to reach the
+      // off-screen columns (Implied value, Share) at 390px as well.
+      e.preventDefault();
+      var wrap = tr.closest('.tscroll');
+      if (wrap) wrap.scrollBy({ left: e.key === 'ArrowRight' ? 160 : -160 });
+    }
   });
 
   // ---- detail view ---------------------------------------------------------
@@ -230,6 +268,9 @@
     document.getElementById('closedetail').addEventListener('click', function () {
       detailEl.hidden = true; state.slug = '';
       tbody.querySelectorAll('tr.sel').forEach(function (tr) { tr.classList.remove('sel'); });
+      // Return focus to the row the detail came from.
+      var tr = tbody.querySelector('tr[data-slug="' + slug + '"]');
+      if (tr) tr.focus();
     });
     render();
     detailEl.scrollIntoView({ block: 'start' });
@@ -255,13 +296,13 @@
     'the long tail is where the early finds are — ' + rows.filter(function (r) { return r.tvl_usd < DATA.floor_usd; }).length +
     ' of the ' + rows.length + ' rows sit below the $50M watchlist floor. Value is concentrated: the top 10 rows hold ' +
     (100 * DATA.top10_share).toFixed(1) + '% of the board&rsquo;s total implied value, so the first screen is where most of the money sits.</p>' +
-    '<table><thead><tr><th>Category</th><th class="num">Protocols</th><th class="num">Total implied</th><th class="num">Share</th><th>Top protocol</th></tr></thead><tbody>' +
+    '<div class="tscroll" tabindex="0" role="region" aria-label="Implied value by category table — scroll horizontally to see all columns"><table><thead><tr><th>Category</th><th class="num">Protocols</th><th class="num">Total implied</th><th class="num">Share</th><th>Top protocol</th></tr></thead><tbody>' +
     catList.map(function (c) {
       return '<tr><td>' + esc(c.name) + '</td><td class="num">' + c.n + '</td>' +
         '<td class="num">' + usd(c.total) + '</td>' +
         '<td class="num">' + (100 * c.total / totalImplied).toFixed(1) + '%</td>' +
         '<td>#' + c.top.rank + ' ' + esc(c.top.name) + ' (' + usd(c.top.implied_value_usd) + ')</td></tr>';
-    }).join('') + '</tbody></table>';
+    }).join('') + '</tbody></table></div>';
 
   // ---- calibration set -------------------------------------------------------
   // Every protocol the 0.08 multiple is taken from, so the median is auditable
@@ -291,14 +332,14 @@
     cb.n + ' smaller trading protocols below $50M gives a median of ' + cb.median.toFixed(3) + ' (deciles ' +
     cb.p10.toFixed(3) + ' / ' + cb.p25.toFixed(3) + ' / ' + cb.median.toFixed(3) + ' / ' + cb.p75.toFixed(3) + ' / ' + cb.p90.toFixed(3) + ') — higher, not lower. ' +
     'The board&rsquo;s 0.08 is the big-protocol median, and it understates the small rows rather than flattering them.</p>' +
-    '<table><thead><tr><th>#</th><th>Protocol</th><th>Category</th><th class="num">TVL</th><th class="num">Market cap</th><th class="num">mcap / TVL</th></tr></thead><tbody>' +
+    '<div class="tscroll" tabindex="0" role="region" aria-label="Calibration set table — scroll horizontally to see all columns"><table><thead><tr><th>#</th><th>Protocol</th><th>Category</th><th class="num">TVL</th><th class="num">Market cap</th><th class="num">mcap / TVL</th></tr></thead><tbody>' +
     cal.map(function (p, i) {
       return '<tr' + (p.median_pair ? ' class="median"' : '') + '><td>' + (i + 1) + '</td>' +
         '<td>' + esc(p.name) + (p.median_pair ? ' <span class="medflag">MEDIAN</span>' : '') + '</td>' +
         '<td>' + esc(p.category || '—') + '</td>' +
         '<td class="num">' + usd(p.tvl_usd) + '</td><td class="num">' + usd(p.mcap_usd) + '</td>' +
         '<td class="num"><strong>' + p.mcap_tvl.toFixed(3) + '</strong></td></tr>';
-    }).join('') + '</tbody></table>';
+    }).join('') + '</tbody></table></div>';
 
   // ---- already-trading reference ------------------------------------------
   var live = DATA.live || [];
@@ -306,12 +347,12 @@
     '<h2>Already trading — not a launch</h2>' +
     '<p>These protocols already have a token that trades, so they are not on the board. ' +
     'Their market caps are the market&rsquo;s own values, and the mcap/TVL column is where the board&rsquo;s 0.08 multiple comes from.</p>' +
-    '<table><thead><tr><th>Protocol</th><th>Category</th><th class="num">TVL</th><th class="num">Market cap</th><th class="num">mcap / TVL</th></tr></thead><tbody>' +
+    '<div class="tscroll" tabindex="0" role="region" aria-label="Already trading table — scroll horizontally to see all columns"><table><thead><tr><th>Protocol</th><th>Category</th><th class="num">TVL</th><th class="num">Market cap</th><th class="num">mcap / TVL</th></tr></thead><tbody>' +
     live.map(function (p) {
       return '<tr><td>' + esc(p.name) + '</td><td>' + esc(p.category || '—') + '</td>' +
         '<td class="num">' + usd(p.tvl_usd) + '</td><td class="num">' + usd(p.mcap_usd) + '</td>' +
         '<td class="num">' + p.mcap_tvl.toFixed(3) + '</td></tr>';
-    }).join('') + '</tbody></table>';
+    }).join('') + '</tbody></table></div>';
 
   // ---- ranking robustness --------------------------------------------------
   // One assumption changed at a time, board re-ranked: how far the ranking
@@ -328,12 +369,12 @@
     'the ranking is driven by TVL and the snapshot, not by one parameter choice. The unrounded 0.082 moves nothing at all: it scales every row by the same 2.5%. ' +
     'For scale, the calibration deciles span ' + d.p10 + ' to ' + d.p90 + ' — more than a hundredfold — so each implied value is a central estimate inside a wide band, not a precise price. ' +
     'One two-variable combination was also computed (growth weight 0.6 with maturity floor 0.60): top 10 kept 9 of 10, biggest move 9 places — inside the range above, so it is cited here rather than added as an eighth row.</p>' +
-    '<table><thead><tr><th>One change</th><th class="num">Top 10 kept</th><th class="num">Biggest rank move</th><th class="num">Rows moved &gt; 10</th><th>Rank #1 same?</th></tr></thead><tbody>' +
+    '<div class="tscroll" tabindex="0" role="region" aria-label="Ranking robustness table — scroll horizontally to see all columns"><table><thead><tr><th>One change</th><th class="num">Top 10 kept</th><th class="num">Biggest rank move</th><th class="num">Rows moved &gt; 10</th><th>Rank #1 same?</th></tr></thead><tbody>' +
     sens.map(function (s) {
       return '<tr><td>' + esc(s.variant) + '</td><td class="num">' + s.top10_overlap + ' / 10</td>' +
         '<td class="num">' + s.max_rank_move + '</td><td class="num">' + s.rows_moved_gt10 + '</td>' +
         '<td>' + (s.rank1_same ? 'yes' : 'no') + '</td></tr>';
-    }).join('') + '</tbody></table>';
+    }).join('') + '</tbody></table></div>';
 
   // ---- thin data and edge cases ---------------------------------------------
   // Counts from the board itself (buildEdgeCases in lib/model.ts); a missing
@@ -343,7 +384,7 @@
     '<h2>Where the data is thin — and what the model does about it</h2>' +
     '<p>The snapshot does not report everything for every protocol. Each gap below is counted from the board itself, ' +
     'and the model&rsquo;s handling of it is stated next to the count.</p>' +
-    '<table><thead><tr><th>Gap</th><th class="num">Rows</th><th>What the model does</th></tr></thead><tbody>' +
+    '<div class="tscroll" tabindex="0" role="region" aria-label="Thin data table — scroll horizontally to see all columns"><table><thead><tr><th>Gap</th><th class="num">Rows</th><th>What the model does</th></tr></thead><tbody>' +
     '<tr><td>Age unknown (no listed date)</td><td class="num">' + ec.age_unknown + '</td><td>Maturity at the 0.70 floor — missing evidence of a long tokenless run is not evidence of one</td></tr>' +
     '<tr><td>7-day change winsorised (capped)</td><td class="num">' + ec.growth_capped + '</td><td>Clipped to [&minus;30%, +50%] before halving, so a low-base jump cannot dominate</td></tr>' +
     '<tr><td>7-day change not reported</td><td class="num">' + ec.change_null + '</td><td>Counted as 0% — no growth credit, no penalty</td></tr>' +
@@ -351,7 +392,7 @@
     '<tr><td>Single chain only</td><td class="num">' + ec.single_chain + '</td><td>Breadth 1.00 — no bonus for a chain it does not run on</td></tr>' +
     '<tr><td>No chain named</td><td class="num">' + ec.no_chains + '</td><td>Treated as one chain; the farm plan names &ldquo;its main chain&rdquo;</td></tr>' +
     '<tr><td>Below the $50M watchlist floor</td><td class="num">' + ec.below_floor + '</td><td>Ranked the same way — the floor is never the ceiling; these are the early finds</td></tr>' +
-    '</tbody></table>';
+    '</tbody></table></div>';
 
   render();
   if (state.slug) showDetail(state.slug);

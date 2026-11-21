@@ -5,6 +5,7 @@
   --accent: #2dd4bf; --accent-dim: #14b8a6; --amber: #fbbf24; --red: #f87171; --green: #4ade80;
 }
 * { box-sizing: border-box; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 html { background: var(--bg); }
 body { margin: 0; background: var(--bg); color: var(--text);
   font: 14px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
@@ -46,6 +47,15 @@ table.board { width: 100%; border-collapse: collapse; background: var(--panel);
   text-transform: uppercase; letter-spacing: .06em; }
 .board tbody tr { cursor: pointer; }
 .board tbody tr:hover, .board tbody tr.sel { background: #16263f; }
+/* Keyboard: rows are tab stops (tabindex=0 in app.js); Enter/Space opens the
+   detail, arrows move between rows. Outline alone does not paint reliably on
+   a <tr>, so the focus ring is an inset shadow as well. */
+.board tbody tr:focus-visible { background: #16263f; outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent); }
+/* Narrow viewports: tables scroll inside their own box instead of pushing
+   the whole page wider than the screen (390px: board is ~700px wide). */
+.tscroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.tscroll > table { border: 0; border-radius: 0; }
 .board td.num, .board th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .board .name { font-weight: 700; }
 .board td:first-child { font-weight: 700; font-size: 15px; }
